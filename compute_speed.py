@@ -5,6 +5,51 @@ import numpy as np
 from matplotlib import pyplot as plt
 import seaborn as sns
 
+def calculate_speed_progression(df, action, interval='10S'):
+    # Convert timestamps to datetime
+    df['msg.time'] = pd.to_datetime(df['msg.time'])
+
+    # Resample data for each validator into specified time intervals
+    resampled = (
+        df.set_index('msg.time')
+        .groupby('validator')
+        .resample(interval)
+        .agg(total_bytes=('msg.bytes', 'sum'))  # Sum bytes within each interval
+        .reset_index()
+    )
+
+    # Calculate elapsed time in seconds for each interval
+    resampled['time_diff'] = resampled.groupby('validator')['msg.time'].diff().dt.total_seconds()
+
+    # Calculate speed in Mbps
+    resampled['speed_mbps'] = (resampled['total_bytes'] * 8) / (resampled['time_diff'] * 1_000_000)
+
+    # Filter out invalid rows (e.g., NaN or infinite speeds due to zero time_diff)
+    resampled = resampled.dropna(subset=['speed_mbps'])
+
+    # Add action type (send/receive) for clarity in plotting
+    resampled['action'] = action
+
+    return resampled
+
+def plot_speed_progression(sent_df, received_df):
+    # Calculate speed progression for sent and received data
+    sent_speeds = calculate_speed_progression(sent_df, action='Send')
+    received_speeds = calculate_speed_progression(received_df, action='Receive')
+
+    # Combine data for plotting
+    progression = pd.concat([sent_speeds, received_speeds])
+
+    # Plot the speed progression
+    plt.figure(figsize=(14, 8))
+    sns.lineplot(data=progression, x='msg.time', y='speed_mbps', hue='validator', style='action')
+    plt.title('Speed Progression Over Time (Every 10 Seconds)')
+    plt.xlabel('Time')
+    plt.ylabel('Speed (Mbps)')
+    plt.legend(title='Validator and Action', bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    plt.show()
+
 def calculate_total_speeds(sent_df, received_df):
     # Convert timestamps to datetime
     sent_df['msg.time'] = pd.to_datetime(sent_df['msg.time'])
