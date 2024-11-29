@@ -38,6 +38,37 @@ def calculate_total_speeds(sent_df, received_df):
 
     return total_speeds
 
+def calculate_total_regions_speeds(sent_df, received_df):
+    # Convert timestamps to datetime
+    sent_df['msg.time'] = pd.to_datetime(sent_df['msg.time'])
+    received_df['msg.time'] = pd.to_datetime(received_df['msg.time'])
+
+    # Calculate total bytes sent and received
+    sent_agg = sent_df.groupby('region').agg(
+        total_bytes_sent=('msg.bytes', 'sum'),
+        start_time_sent=('msg.time', 'min'),
+        end_time_sent=('msg.time', 'max')
+    ).reset_index()
+
+    received_agg = received_df.groupby('region').agg(
+        total_bytes_received=('msg.bytes', 'sum'),
+        start_time_received=('msg.time', 'min'),
+        end_time_received=('msg.time', 'max')
+    ).reset_index()
+
+    # Merge sent and received data
+    total_speeds = pd.merge(sent_agg, received_agg, on='region', how='outer')
+
+    # Calculate total time in seconds for sending and receiving
+    total_speeds['total_time_sent'] = (total_speeds['end_time_sent'] - total_speeds['start_time_sent']).dt.total_seconds()
+    total_speeds['total_time_received'] = (total_speeds['end_time_received'] - total_speeds['start_time_received']).dt.total_seconds()
+
+    # Calculate upload and download speeds in Mbps
+    total_speeds['upload_speed_mbps'] = (total_speeds['total_bytes_sent'] * 8) / (total_speeds['total_time_sent'] * 1_000_000)
+    total_speeds['download_speed_mbps'] = (total_speeds['total_bytes_received'] * 8) / (total_speeds['total_time_received'] * 1_000_000)
+
+    return total_speeds
+
 def plot_speeds(total_speeds):
     total_speeds['validator_with_region'] = total_speeds['validator'] + ' (' + total_speeds['region_x'] + ')'
     # Melt data for plotting
@@ -49,6 +80,21 @@ def plot_speeds(total_speeds):
     sns.barplot(data=plot_data, x='validator_with_region', y='Speed (Mbps)', hue='Speed Type')
     plt.title('Upload vs Download Speeds for Each Validator')
     plt.xlabel('Validator with region')
+    plt.ylabel('Speed (Mbps)')
+    plt.xticks(rotation=45)
+    plt.legend(title='Speed Type')
+    plt.show()
+
+def plot_region_speeds(total_speeds):
+    # Melt data for plotting
+    plot_data = total_speeds.melt(id_vars=['region'], value_vars=['upload_speed_mbps', 'download_speed_mbps'],
+                                  var_name='Region', value_name='Speed (Mbps)')
+
+    # Create bar plot
+    plt.figure(figsize=(12, 6))
+    sns.barplot(data=plot_data, x='region', y='Speed (Mbps)', hue='Region')
+    plt.title('Upload vs Download Speeds for Each Region')
+    plt.xlabel('Region')
     plt.ylabel('Speed (Mbps)')
     plt.xticks(rotation=45)
     plt.legend(title='Speed Type')
