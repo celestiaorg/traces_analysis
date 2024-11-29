@@ -36,3 +36,24 @@ def parse_list_with_regions(file_path):
 
     df = pd.DataFrame(records)
     return df
+
+def parse_ip_to_region(file_path):
+    with open(file_path, 'r') as f:
+        lines = f.readlines()
+
+    # Skip the header and empty lines
+    data_lines = [line for line in lines if line.strip() and not line.startswith('ID')]
+
+    ip_to_region = {}
+
+    # Extract columns using regex
+    pattern = re.compile(r'\s*(\d+)\s+(\S+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]*)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\w+)\s+(.*?)\s+([\w-]+)\s+(\w+)\s*(.*)')
+    for line in data_lines:
+        match = pattern.match(line)
+        if match:
+            groups = match.groups()
+            ip_to_region[groups[2]] = groups[8]
+        else:
+            print(f"Line skipped (could not parse): {line.strip()}")
+
+    return ip_to_region

@@ -17,7 +17,7 @@ def read_jsonl_file(file_path):
     return data
 
 
-def process_experiment_data(experiment_path):
+def process_experiment_data(experiment_path, ips_to_regions):
     # Initialize empty lists to hold data
     received_data = []
     sent_data = []
@@ -34,6 +34,7 @@ def process_experiment_data(experiment_path):
             received = read_jsonl_file(received_file)
             for item in received:
                 item['validator'] = validator
+                item['region'] = ips_to_regions[validator]
             received_data.extend(received)
 
         # Process timed_sent_bytes.jsonl
@@ -42,6 +43,7 @@ def process_experiment_data(experiment_path):
             sent = read_jsonl_file(sent_file)
             for item in sent:
                 item['validator'] = validator
+                item['region'] = ips_to_regions[validator]
             sent_data.extend(sent)
 
         # Process peers.jsonl
@@ -50,6 +52,7 @@ def process_experiment_data(experiment_path):
             peers = read_jsonl_file(peers_file)
             for item in peers:
                 item['validator'] = validator
+                item['region'] = ips_to_regions[validator]
             peers_data.extend(peers)
 
     # Convert to DataFrames

@@ -14,13 +14,15 @@ def calculate_total_speeds(sent_df, received_df):
     sent_agg = sent_df.groupby('validator').agg(
         total_bytes_sent=('msg.bytes', 'sum'),
         start_time_sent=('msg.time', 'min'),
-        end_time_sent=('msg.time', 'max')
+        end_time_sent=('msg.time', 'max'),
+        region = ('region', 'first')
     ).reset_index()
 
     received_agg = received_df.groupby('validator').agg(
         total_bytes_received=('msg.bytes', 'sum'),
         start_time_received=('msg.time', 'min'),
-        end_time_received=('msg.time', 'max')
+        end_time_received=('msg.time', 'max'),
+        region = ('region', 'first')
     ).reset_index()
 
     # Merge sent and received data
@@ -37,15 +39,16 @@ def calculate_total_speeds(sent_df, received_df):
     return total_speeds
 
 def plot_speeds(total_speeds):
+    total_speeds['validator_with_region'] = total_speeds['validator'] + ' (' + total_speeds['region_x'] + ')'
     # Melt data for plotting
-    plot_data = total_speeds.melt(id_vars=['validator'], value_vars=['upload_speed_mbps', 'download_speed_mbps'],
+    plot_data = total_speeds.melt(id_vars=['validator_with_region'], value_vars=['upload_speed_mbps', 'download_speed_mbps'],
                                   var_name='Speed Type', value_name='Speed (Mbps)')
 
     # Create bar plot
     plt.figure(figsize=(12, 6))
-    sns.barplot(data=plot_data, x='validator', y='Speed (Mbps)', hue='Speed Type')
+    sns.barplot(data=plot_data, x='validator_with_region', y='Speed (Mbps)', hue='Speed Type')
     plt.title('Upload vs Download Speeds for Each Validator')
-    plt.xlabel('Validator')
+    plt.xlabel('Validator with region')
     plt.ylabel('Speed (Mbps)')
     plt.xticks(rotation=45)
     plt.legend(title='Speed Type')
