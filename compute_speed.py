@@ -1,13 +1,13 @@
 import numpy as np
 import pandas as pd
-
 import os
 import numpy as np
 from matplotlib import pyplot as plt
 import seaborn as sns
 import matplotlib.dates as mdates
 import matplotlib.cm as cm
-
+from multiprocessing import Pool, cpu_count
+import functools
 
 def plot_speed_progression_per_peer(speed_data, ips_to_regions, output_dir):
     # Ensure the output directory exists
@@ -16,53 +16,57 @@ def plot_speed_progression_per_peer(speed_data, ips_to_regions, output_dir):
     # Get unique validators (source peers)
     validators = speed_data['validator'].unique()
 
-    for validator in validators:
-        validator_data = speed_data[speed_data['validator'] == validator]
+    # Use multiprocessing Pool to parallelize plotting for each validator
+    with Pool(processes=cpu_count()) as pool:
+        pool.map(functools.partial(_plot_validator_speed_progression, speed_data, ips_to_regions, output_dir), validators)
 
-        # Get the region of the validator
-        validator_region = ips_to_regions.get(validator, 'Unknown')
+def _plot_validator_speed_progression(speed_data, ips_to_regions, output_dir, validator):
+    validator_data = speed_data[speed_data['validator'] == validator]
 
-        # Create figure and axis objects
-        fig, ax = plt.subplots(figsize=(16, 9), dpi=480)
+    # Get the region of the validator
+    validator_region = ips_to_regions.get(validator, 'Unknown')
 
-        # Get unique target peers for this validator
-        target_peers = validator_data['msg.peer_id'].unique()
+    # Create figure and axis objects
+    fig, ax = plt.subplots(figsize=(16, 9), dpi=480)
 
-        # Generate a color map with enough colors
-        num_lines = len(target_peers)
-        colors = cm.get_cmap('nipy_spectral', num_lines)
+    # Get unique target peers for this validator
+    target_peers = validator_data['msg.peer_id'].unique()
 
-        for idx, target_peer in enumerate(target_peers):
-            peer_data = validator_data[validator_data['msg.peer_id'] == target_peer]
-            label = f"{peer_data['target_ip'].iloc[0]} ({peer_data['target_region'].iloc[0]})"
-            color = colors(idx)
-            ax.plot(peer_data['msg.time'], peer_data['speed_mbps'], label=label, color=color, linewidth=2)
+    # Generate a color map with enough colors
+    num_lines = len(target_peers)
+    colors = cm.get_cmap('nipy_spectral', num_lines)
 
-        ax.set_title(f"Speed Progression for Validator {validator} ({validator_region})")
-        ax.set_xlabel('Time')
-        ax.set_ylabel('Speed (Mbps)')
+    for idx, target_peer in enumerate(target_peers):
+        peer_data = validator_data[validator_data['msg.peer_id'] == target_peer]
+        label = f"{peer_data['target_ip'].iloc[0]} ({peer_data['target_region'].iloc[0]})"
+        color = colors(idx)
+        ax.plot(peer_data['msg.time'], peer_data['speed_mbps'], label=label, color=color, linewidth=2)
 
-        # Format x-axis dates
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-        plt.xticks(rotation=45)
+    ax.set_title(f"Speed Progression for Validator {validator} ({validator_region})")
+    ax.set_xlabel('Time')
+    ax.set_ylabel('Speed (Mbps)')
 
-        # Adjust the legend
-        ax.legend(
-            title='Target Peer (IP and Region)',
-            loc='upper left',
-            bbox_to_anchor=(1.02, 1),
-            fontsize=14,
-            borderaxespad=0,
-            ncol=1
-        )
+    # Format x-axis dates
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+    plt.xticks(rotation=45)
 
-        # Adjust layout to prevent clipping
-        fig.tight_layout(pad=3.0)
+    # Adjust the legend
+    ax.legend(
+        title='Target Peer (IP and Region)',
+        loc='upper left',
+        bbox_to_anchor=(1.02, 1),
+        fontsize=14,
+        borderaxespad=0,
+        ncol=1
+    )
 
-        # Save the plot with bbox_inches='tight'
-        output_file = os.path.join(output_dir, f"speed_progression_{validator}.png")
-        fig.savefig(output_file, bbox_inches='tight')
-        plt.close(fig)
+    # Adjust layout to prevent clipping
+    fig.tight_layout(pad=3.0)
+
+    # Save the plot with bbox_inches='tight'
+    output_file = os.path.join(output_dir, f"speed_progression_{validator}.png")
+    fig.savefig(output_file, bbox_inches='tight')
+    plt.close(fig)
 
 def calculate_speed_progression_per_peer(df, interval='10S'):
     # Convert timestamps to datetime if not already done
@@ -230,7 +234,7 @@ def plot_speeds(total_speeds, output_dir):
     plt.figure(figsize=(16, 9), dpi=480)
     sns.barplot(data=plot_data, x='validator_with_region', y='Speed (Mbps)', hue='Speed Type')
     plt.title('Upload vs Download Speeds for Each Validator')
-    plt.xlabel('Validator with region')
+    plt.xlabel('Validator with Region')
     plt.ylabel('Speed (Mbps)')
     plt.xticks(rotation=45)
     plt.legend(title='Speed Type')
