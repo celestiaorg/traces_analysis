@@ -6,6 +6,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 import seaborn as sns
 import matplotlib.dates as mdates
+import matplotlib.cm as cm
+
 
 def plot_speed_progression_per_peer(speed_data, ips_to_regions, output_dir):
     # Ensure the output directory exists
@@ -16,37 +18,63 @@ def plot_speed_progression_per_peer(speed_data, ips_to_regions, output_dir):
 
     for validator in validators:
         validator_data = speed_data[speed_data['validator'] == validator]
-        plt.figure(figsize=(16, 9), dpi=480)
+
+        # Get the region of the validator
+        validator_region = ips_to_regions.get(validator, 'Unknown')
+
+        # Create figure and axis objects
+        fig, ax = plt.subplots(figsize=(16, 9), dpi=480)
 
         # Get unique target peers for this validator
         target_peers = validator_data['msg.peer_id'].unique()
 
-        for target_peer in target_peers:
+        # Generate a color map with enough colors
+        num_lines = len(target_peers)
+        colors = cm.get_cmap('nipy_spectral', num_lines)
+
+        for idx, target_peer in enumerate(target_peers):
             peer_data = validator_data[validator_data['msg.peer_id'] == target_peer]
             label = f"{peer_data['target_ip'].iloc[0]} ({peer_data['target_region'].iloc[0]})"
-            plt.plot(peer_data['msg.time'], peer_data['speed_bps'], label=label)
+            color = colors(idx)
+            ax.plot(peer_data['msg.time'], peer_data['speed_mbps'], label=label, color=color, linewidth=2)
 
-        plt.title(f"Speed Progression for Validator {validator} ({ips_to_regions[validator]})")
-        plt.xlabel('Time')
-        plt.ylabel('Speed (Bytes/sec)')
-        plt.legend(title='Target Peer (IP and Region)', bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+        ax.set_title(f"Speed Progression for Validator {validator} ({validator_region})")
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Speed (Mbps)')
+
+        # Format x-axis dates
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
         plt.xticks(rotation=45)
-        plt.tight_layout()
 
-        # Save the plot to the specified output directory
+        # Adjust the legend
+        ax.legend(
+            title='Target Peer (IP and Region)',
+            loc='upper left',
+            bbox_to_anchor=(1.02, 1),
+            fontsize=14,
+            borderaxespad=0,
+            ncol=1
+        )
+
+        # Adjust layout to prevent clipping
+        fig.tight_layout(pad=3.0)
+
+        # Save the plot with bbox_inches='tight'
         output_file = os.path.join(output_dir, f"speed_progression_{validator}.png")
-        plt.savefig(output_file, bbox_inches='tight')
-        plt.close()
+        fig.savefig(output_file, bbox_inches='tight')
+        plt.close(fig)
 
 def calculate_speed_progression_per_peer(df, interval='10S'):
     # Convert timestamps to datetime if not already done
     df['msg.time'] = pd.to_datetime(df['msg.time'])
 
+    # Ensure 'msg.bytes' is numeric
+    df['msg.bytes'] = pd.to_numeric(df['msg.bytes'], errors='coerce')
+
     # Set 'msg.time' as index
     df = df.set_index('msg.time')
 
-    # Group data by validator (source peer), target peer (msg.peer_id), and 10-second intervals
+    # Group data by validator (source peer), target peer (msg.peer_id), and time intervals
     grouped = df.groupby([
         'validator',
         'msg.peer_id',
@@ -56,8 +84,15 @@ def calculate_speed_progression_per_peer(df, interval='10S'):
     # Sum the bytes in each interval
     speed_data = grouped['msg.bytes'].sum().reset_index()
 
-    # Calculate speed in bytes per second
-    speed_data['speed_bps'] = speed_data['msg.bytes'] / 10  # Since intervals are 10 seconds
+    # Calculate the actual duration of each interval in seconds
+    interval_duration = pd.to_timedelta(interval).total_seconds()
+
+    # Calculate speed in Mbps
+    speed_data['speed_mbps'] = (speed_data['msg.bytes'] * 8) / (interval_duration * 1_000_000)
+
+    # Replace infinite or NaN values
+    speed_data.replace([np.inf, -np.inf], np.nan, inplace=True)
+    speed_data.dropna(subset=['speed_mbps'], inplace=True)
 
     # Merge with target IP and region for labeling
     peer_info = df[['msg.peer_id', 'target_ip', 'target_region']].drop_duplicates()
