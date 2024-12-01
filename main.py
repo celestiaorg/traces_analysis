@@ -10,9 +10,11 @@ from parse_validators_regions import parse_list_with_regions, parse_ip_to_region
 if __name__ == '__main__':
     # experiment_path = 'sample_data'
     # experiment_path = 'traces_tm_native_bbr_52_validators'
-    experiment_path = 'traces_quic_52_validators'
+    # experiment_path = 'traces_quic_52_validators'
+    experiment_path = 'traces_bench_tool'
 
-    ips_to_regions = parse_ip_to_region('list_with_regions.txt')
+    # ips_to_regions = parse_ip_to_region('list_with_regions.txt')
+    ips_to_regions = parse_ip_to_region('quic_tool_list_with_regions.txt')
     print("finished parsing list with regions")
 
     received_df, sent_df, peers_df = process_experiment_data(experiment_path, ips_to_regions)
