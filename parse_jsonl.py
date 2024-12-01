@@ -59,5 +59,11 @@ def process_experiment_data(experiment_path, ips_to_regions):
     received_df = pd.json_normalize(received_data)
     sent_df = pd.json_normalize(sent_data)
     peers_df = pd.json_normalize(peers_data)
+    received_df['msg.time'] = pd.to_datetime(received_df['msg.time'])
+    received_df['target_ip'] = received_df['msg.ip_address'].str.split(':').str[0]
+    received_df['target_region'] = received_df['target_ip'].map(ips_to_regions)
+    sent_df['msg.time'] = pd.to_datetime(sent_df['msg.time'])
+    sent_df['target_ip'] = sent_df['msg.ip_address'].str.split(':').str[0]
+    sent_df['target_region'] = sent_df['target_ip'].map(ips_to_regions)
 
     return received_df, sent_df, peers_df

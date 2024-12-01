@@ -1,9 +1,69 @@
 import numpy as np
 import pandas as pd
 
+import os
 import numpy as np
 from matplotlib import pyplot as plt
 import seaborn as sns
+import matplotlib.dates as mdates
+
+def plot_speed_progression_per_peer(speed_data, ips_to_regions, output_dir):
+    # Ensure the output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Get unique validators (source peers)
+    validators = speed_data['validator'].unique()
+
+    for validator in validators:
+        validator_data = speed_data[speed_data['validator'] == validator]
+        plt.figure(figsize=(16, 9), dpi=480)
+
+        # Get unique target peers for this validator
+        target_peers = validator_data['msg.peer_id'].unique()
+
+        for target_peer in target_peers:
+            peer_data = validator_data[validator_data['msg.peer_id'] == target_peer]
+            label = f"{peer_data['target_ip'].iloc[0]} ({peer_data['target_region'].iloc[0]})"
+            plt.plot(peer_data['msg.time'], peer_data['speed_bps'], label=label)
+
+        plt.title(f"Speed Progression for Validator {validator} ({ips_to_regions[validator]})")
+        plt.xlabel('Time')
+        plt.ylabel('Speed (Bytes/sec)')
+        plt.legend(title='Target Peer (IP and Region)', bbox_to_anchor=(1.05, 1), loc='upper left')
+        plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+
+        # Save the plot to the specified output directory
+        output_file = os.path.join(output_dir, f"speed_progression_{validator}.png")
+        plt.savefig(output_file, bbox_inches='tight')
+        plt.close()
+
+def calculate_speed_progression_per_peer(df, interval='10S'):
+    # Convert timestamps to datetime if not already done
+    df['msg.time'] = pd.to_datetime(df['msg.time'])
+
+    # Set 'msg.time' as index
+    df = df.set_index('msg.time')
+
+    # Group data by validator (source peer), target peer (msg.peer_id), and 10-second intervals
+    grouped = df.groupby([
+        'validator',
+        'msg.peer_id',
+        pd.Grouper(freq=interval)
+    ])
+
+    # Sum the bytes in each interval
+    speed_data = grouped['msg.bytes'].sum().reset_index()
+
+    # Calculate speed in bytes per second
+    speed_data['speed_bps'] = speed_data['msg.bytes'] / 10  # Since intervals are 10 seconds
+
+    # Merge with target IP and region for labeling
+    peer_info = df[['msg.peer_id', 'target_ip', 'target_region']].drop_duplicates()
+    speed_data = speed_data.merge(peer_info, on='msg.peer_id', how='left')
+
+    return speed_data
 
 def calculate_speed_progression(df, action, interval='10S'):
     # Convert timestamps to datetime
@@ -14,7 +74,10 @@ def calculate_speed_progression(df, action, interval='10S'):
         df.set_index('msg.time')
         .groupby('validator')
         .resample(interval)
-        .agg(total_bytes=('msg.bytes', 'sum'))  # Sum bytes within each interval
+        .agg(
+            total_bytes=('msg.bytes', 'sum'),
+            region=('region', 'first')
+        )
         .reset_index()
     )
 
@@ -32,23 +95,31 @@ def calculate_speed_progression(df, action, interval='10S'):
 
     return resampled
 
-def plot_speed_progression(sent_df, received_df):
+def plot_speed_progression(sent_df, received_df, output_dir):
+    # Ensure the output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+
     # Calculate speed progression for sent and received data
     sent_speeds = calculate_speed_progression(sent_df, action='Send')
     received_speeds = calculate_speed_progression(received_df, action='Receive')
+
+    received_speeds['validator_with_region'] = received_speeds['validator'] + ' (' + received_speeds['region'] + ')'
+    sent_speeds['validator_with_region'] = sent_speeds['validator'] + ' (' + sent_speeds['region'] + ')'
 
     # Combine data for plotting
     progression = pd.concat([sent_speeds, received_speeds])
 
     # Plot the speed progression
-    plt.figure(figsize=(14, 8))
-    sns.lineplot(data=progression, x='msg.time', y='speed_mbps', hue='validator', style='action')
+    plt.figure(figsize=(16, 9), dpi=480)
+    sns.lineplot(data=progression, x='msg.time', y='speed_mbps', hue='validator_with_region', style='action')
     plt.title('Speed Progression Over Time (Every 10 Seconds)')
     plt.xlabel('Time')
     plt.ylabel('Speed (Mbps)')
     plt.legend(title='Validator and Action', bbox_to_anchor=(1.05, 1), loc='upper left')
     plt.tight_layout()
-    plt.show()
+    output_file = os.path.join(output_dir, f"speed_progression_for_all_peers.png")
+    plt.savefig(output_file, bbox_inches='tight')
+    plt.close()
 
 def calculate_total_speeds(sent_df, received_df):
     # Convert timestamps to datetime
@@ -114,36 +185,40 @@ def calculate_total_regions_speeds(sent_df, received_df):
 
     return total_speeds
 
-def plot_speeds(total_speeds):
+def plot_speeds(total_speeds, output_dir):
     total_speeds['validator_with_region'] = total_speeds['validator'] + ' (' + total_speeds['region_x'] + ')'
     # Melt data for plotting
     plot_data = total_speeds.melt(id_vars=['validator_with_region'], value_vars=['upload_speed_mbps', 'download_speed_mbps'],
                                   var_name='Speed Type', value_name='Speed (Mbps)')
 
     # Create bar plot
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(16, 9), dpi=480)
     sns.barplot(data=plot_data, x='validator_with_region', y='Speed (Mbps)', hue='Speed Type')
     plt.title('Upload vs Download Speeds for Each Validator')
     plt.xlabel('Validator with region')
     plt.ylabel('Speed (Mbps)')
     plt.xticks(rotation=45)
     plt.legend(title='Speed Type')
-    plt.show()
+    output_file = os.path.join(output_dir, f"upload_vs_download_speed_for_each_validator.png")
+    plt.savefig(output_file, bbox_inches='tight')
+    plt.close()
 
-def plot_region_speeds(total_speeds):
+def plot_region_speeds(total_speeds, output_dir):
     # Melt data for plotting
     plot_data = total_speeds.melt(id_vars=['region'], value_vars=['upload_speed_mbps', 'download_speed_mbps'],
                                   var_name='Region', value_name='Speed (Mbps)')
 
     # Create bar plot
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(16, 9), dpi=480)
     sns.barplot(data=plot_data, x='region', y='Speed (Mbps)', hue='Region')
     plt.title('Upload vs Download Speeds for Each Region')
     plt.xlabel('Region')
     plt.ylabel('Speed (Mbps)')
     plt.xticks(rotation=45)
     plt.legend(title='Speed Type')
-    plt.show()
+    output_file = os.path.join(output_dir, f"upload_vs_download_per_region.png")
+    plt.savefig(output_file, bbox_inches='tight')
+    plt.close()
 
 def calculate_mean_speeds(total_speeds):
     mean_upload_speed = total_speeds['upload_speed_mbps'].mean()
@@ -170,42 +245,6 @@ def compute_speeds(df, action):
     df['action'] = action
     return df
 
-def plot_speeds_mbps(speeds_df):
-    plt.figure(figsize=(12, 6))
-    sns.lineplot(data=speeds_df, x='msg.time', y='speed_mbps', hue='action', estimator='mean')
-    plt.title('Speed of Send/Receive Over Time')
-    plt.xlabel('Time')
-    plt.ylabel('Speed (Mbps)')
-    plt.legend(title='Action')
-    plt.show()
-
-
-def plot_speed_between_regions_mbps(speeds_df, validators_df):
-    # Merge speeds_df with validators_df to get regions
-    speeds_df = speeds_df.merge(validators_df[['Public IPv4', 'Region']], left_on='validator', right_on='Public IPv4',
-                                how='left')
-    speeds_df = speeds_df.rename(columns={'Region': 'validator_region'})
-
-    # Similarly, merge to get peer regions
-    speeds_df = speeds_df.merge(validators_df[['Public IPv4', 'Region']], left_on='msg.peer_id', right_on='Public IPv4',
-                                how='left', suffixes=('', '_peer'))
-    speeds_df = speeds_df.rename(columns={'Region_peer': 'peer_region'})
-
-    # Drop rows with missing regions
-    speeds_df = speeds_df.dropna(subset=['validator_region', 'peer_region'])
-
-    # Create a new column for region pair
-    speeds_df['region_pair'] = speeds_df['validator_region'] + ' -> ' + speeds_df['peer_region']
-
-    plt.figure(figsize=(12, 6))
-    sns.lineplot(data=speeds_df, x='msg.time', y='speed_mbps', hue='region_pair', estimator='mean')
-    plt.title('Speed Between Regions Over Time')
-    plt.xlabel('Time')
-    plt.ylabel('Speed (Mbps)')
-    plt.legend(title='Region Pair')
-    plt.show()
-
-
 def resample_speeds(speeds_df, interval='1T'):
     # Ensure 'msg.time' is a datetime object and set it as the index
     speeds_df = speeds_df.set_index('msg.time')
@@ -214,13 +253,3 @@ def resample_speeds(speeds_df, interval='1T'):
     resampled_df = speeds_df.resample(interval).mean().reset_index()
 
     return resampled_df
-
-
-def plot_resampled_speeds_mbps(speeds_df):
-    plt.figure(figsize=(12, 6))
-    sns.lineplot(data=speeds_df, x='msg.time', y='speed_mbps', hue='action')
-    plt.title('Average Speed of Send/Receive Over Time (Resampled)')
-    plt.xlabel('Time')
-    plt.ylabel('Speed (Mbps)')
-    plt.legend(title='Action')
-    plt.show()
