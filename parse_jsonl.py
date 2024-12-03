@@ -6,7 +6,6 @@ from multiprocessing import Pool, cpu_count
 from functools import partial
 
 def process_chunk(chunk):
-    print("process chunk")
     return pd.json_normalize(chunk)
 
 def read_jsonl_file(file_path):
@@ -50,7 +49,6 @@ def process_validator_data(validator, experiment_path, ips_to_regions):
 
 def process_chunk_dataframe(args):
     chunk, func_name, ips_to_regions = args
-    print("process chunk dataframe " + func_name)
     if func_name == 'process_received_chunk':
         return process_received_chunk(chunk, ips_to_regions)
     elif func_name == 'process_sent_chunk':
