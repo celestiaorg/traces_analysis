@@ -11,11 +11,15 @@ def process_chunk(chunk):
 def read_jsonl_file(file_path):
     data = []
     print(file_path)
+    count = 0
     with open(file_path, 'r') as f:
         for line in f:
+            if count == 300000:
+                return data
             try:
                 json_line = json.loads(line)
                 data.append(json_line)
+                count += 1
             except json.JSONDecodeError:
                 continue
     return data
